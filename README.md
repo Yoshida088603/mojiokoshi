@@ -1,8 +1,9 @@
 # Kotoba-Whisper による日本語音声文字起こし
 
 ## 概要
-このシステムは、音声ファイル（webmまたはwav形式）を日本語テキストに変換するためのツールです。
+このシステムは、音声ファイル（webm、wav、mp3形式）を日本語テキストに変換するためのツールです。
 kotoba-whisper-v2.0モデルを使用して高精度な日本語文字起こしを実現します。
+より高度な機能が必要な場合は、[kotoba-whisper-v2.2](https://huggingface.co/kotoba-tech/kotoba-whisper-v2.2)への移行も検討できます。
 下記の記事を参考にしながら作業を行いました。
 https://qiita.com/ryosuke_ohori/items/9634c1fd8a9cc9ff7c36
 
@@ -10,7 +11,7 @@ https://qiita.com/ryosuke_ohori/items/9634c1fd8a9cc9ff7c36
 
 ## 特徴
 - 日本語に特化した高精度な文字起こし
-- webmおよびwav形式の音声ファイルに対応
+- webm、wav、mp3形式の音声ファイルに対応
 - GPUがある場合は自動的に使用（なくてもCPU動作可能）
 - ローカル環境で処理可能
 - 進捗バーによる処理状況の可視化
@@ -95,6 +96,9 @@ python kotoba.py input.webm
 
 # wavファイルの場合
 python kotoba.py input.wav
+
+# mp3ファイルの場合
+python kotoba.py input.mp3
 ```
 
 ### 出力
@@ -137,6 +141,26 @@ python kotoba.py input.wav
 - 通常のWhisperと比べて約6.3倍の高速化
 - 日本語音声認識に最適化
 - 開発：Kotoba Technologies社
+
+### モデルバージョンについて
+より高機能な[kotoba-whisper-v2.2](https://huggingface.co/kotoba-tech/kotoba-whisper-v2.2)も利用可能ですが、本システムではv2.0を採用しています：
+
+選定理由：
+- シンプルな環境構築（追加認証不要）
+- 最小限のパッケージ依存
+- オフライン実行が可能
+- 軽量な実行環境
+
+v2.2で追加される機能：
+- 話者分離機能（複数話者の識別）
+- 句読点の自動追加
+- より正確なタイムスタンプ
+ただし、これらの機能を利用するには追加のセットアップ（Hugging Face認証、追加パッケージのインストール）が必要です。
+
+用途に応じて、v2.2への移行を検討することも可能です。特に以下のような場合はv2.2が適しています：
+- 複数話者の会話やインタビューの文字起こし
+- より読みやすい形式（句読点付き）での出力が必要
+- 詳細なタイムスタンプが必要
 
 ## 参考リンク
 - [WindowsにFFmpegをインストールする方法](https://qiita.com/Tadataka_Takahashi/items/9dcb0cf308db6f5dc31b)

@@ -1,211 +1,103 @@
 import torch
-from transformers import WhisperProcessor, WhisperForConditionalGeneration
-import soundfile as sf
-import time
-import os
-from pydub import AudioSegment
-import argparse
+from transformers import pipeline
+import torchaudio
 import numpy as np
-import warnings
-from transformers import logging
-from tqdm import tqdm
+import os
+import time
+import argparse
 
-# Transformersの警告を抑制
-logging.set_verbosity_error()
-warnings.filterwarnings("ignore")
-
-class Timer:
-    def __init__(self):
-        self.times = {}
-        self.start_time = time.time()
-    
-    def log(self, step):
-        self.times[step] = time.time()
-    
-    def get_duration(self, start_step, end_step):
-        return self.times[end_step] - self.times[start_step]
-    
-    def print_durations(self):
-        print("\n処理時間の詳細:")
-        print(f"{'ステップ':<20} {'所要時間':<10}")
-        print("-" * 40)
-        
-        steps = list(self.times.keys())
-        for i in range(1, len(steps)):
-            duration = self.get_duration(steps[i-1], steps[i])
-            print(f"{steps[i]:<20} {duration:>8.2f}秒")
-        
-        total_time = self.times[steps[-1]] - self.start_time
-        print("-" * 40)
-        print(f"{'合計時間':<20} {total_time:>8.2f}秒")
-
-def convert_webm_to_wav(input_file, timer):
-    """WebMファイルをWAVファイルに変換する"""
-    print(f"Converting {input_file} to WAV format...")
-    temp_wav = os.path.join(os.path.dirname(input_file), "temp_record.wav")
-    
-    try:
-        timer.log("音声ファイル読み込み開始")
-        print("Loading audio file...")
-        audio = AudioSegment.from_file(input_file, format="webm")
-        print(f"Original audio: {len(audio)}ms, {audio.frame_rate}Hz, {audio.channels} channels")
-        
-        timer.log("モノラル変換開始")
-        if audio.channels > 1:
-            print("Converting to mono...")
-            audio = audio.set_channels(1)
-        
-        timer.log("サンプリングレート変換開始")
-        print("Converting sample rate to 16kHz...")
-        audio = audio.set_frame_rate(16000)
-        
-        print(f"Processed audio: {len(audio)}ms, {audio.frame_rate}Hz, {audio.channels} channels")
-        
-        timer.log("WAVファイル出力開始")
-        with tqdm(total=100, desc="WAVファイル出力") as pbar:
-            audio.export(temp_wav, format="wav")
-            pbar.update(100)
-        
-        timer.log("音声変換完了")
-        print("Conversion completed successfully!")
-        return temp_wav
-    except Exception as e:
-        if os.path.exists(temp_wav):
-            os.remove(temp_wav)
-        raise Exception(f"音声変換エラー: {str(e)}")
+def check_gpu_info():
+    if torch.cuda.is_available():
+        gpu_name = torch.cuda.get_device_name(0)
+        total_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3  # GB単位
+        print(f"GPU: {gpu_name}")
+        print(f"Total GPU Memory: {total_memory:.2f} GB")
+        print(f"CUDA Version: {torch.version.cuda}")
+        return True
+    else:
+        print("GPU is not available. Using CPU.")
+        return False
 
 def transcribe_audio(input_file):
-    """音声ファイルをテキストに変換する"""
-    if not os.path.exists(input_file):
-        raise FileNotFoundError(f"ファイルが見つかりません: {input_file}")
+    print("Current working directory:", os.getcwd())
+    print(f"Processing file: {input_file}")
 
-    timer = Timer()
-    timer.log("処理開始")
+    # GPU環境の確認
+    use_gpu = check_gpu_info()
 
-    if torch.cuda.is_available():
-        print(f"CUDA Memory before loading model: {torch.cuda.memory_allocated()/1024**2:.2f}MB")
-    
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
-    
-    temp_wav = None
-    try:
-        # WebM形式の場合はWAVに変換
-        if input_file.lower().endswith('.webm'):
-            temp_wav = convert_webm_to_wav(input_file, timer)
-            wav_file = temp_wav
-        else:
-            timer.log("WAVファイル処理開始")
-            print("Loading WAV file...")
-            audio = AudioSegment.from_file(input_file)
-            print(f"Original audio: {len(audio)}ms, {audio.frame_rate}Hz, {audio.channels} channels")
-            
-            needs_conversion = False
-            if audio.channels > 1:
-                print("Converting to mono...")
-                audio = audio.set_channels(1)
-                needs_conversion = True
-            
-            if audio.frame_rate != 16000:
-                print("Converting sample rate to 16kHz...")
-                audio = audio.set_frame_rate(16000)
-                needs_conversion = True
-            
-            if needs_conversion:
-                temp_wav = os.path.join(os.path.dirname(input_file), "temp_record.wav")
-                print(f"Processed audio: {len(audio)}ms, {audio.frame_rate}Hz, {audio.channels} channels")
-                with tqdm(total=100, desc="WAVファイル出力") as pbar:
-                    audio.export(temp_wav, format="wav")
-                    pbar.update(100)
-                wav_file = temp_wav
-            else:
-                wav_file = input_file
-            timer.log("WAVファイル処理完了")
-        
-        # 出力ファイルパスの設定
-        output_file = os.path.join(os.path.dirname(input_file), "transcription.txt")
-        
-        # モデルの準備
-        print("\nLoading model...")
-        timer.log("モデル読み込み開始")
-        with tqdm(total=2, desc="モデル読み込み") as pbar:
-            model_id = "kotoba-tech/kotoba-whisper-v2.0"
-            processor = WhisperProcessor.from_pretrained(model_id)
-            pbar.update(1)
-            model = WhisperForConditionalGeneration.from_pretrained(model_id).to(device)
-            pbar.update(1)
-        
-        timer.log("モデル読み込み完了")
-        if torch.cuda.is_available():
-            print(f"CUDA Memory after loading model: {torch.cuda.memory_allocated()/1024**2:.2f}MB")
-        print("Model loaded successfully!")
-        
-        # 文字起こしの実行
-        print("\nStarting transcription...")
-        timer.log("音声データ読み込み開始")
-        
-        print("Reading audio file...")
-        audio_input, sample_rate = sf.read(wav_file)
-        print(f"Audio shape: {audio_input.shape}, Sample rate: {sample_rate}Hz")
-        timer.log("音声データ読み込み完了")
-        
-        # データ型をfloat32に変換し、値の範囲を-1から1に正規化
-        audio_input = audio_input.astype(np.float32)
-        if audio_input.max() > 1.0 or audio_input.min() < -1.0:
-            print("Normalizing audio...")
-            audio_input = audio_input / max(abs(audio_input.max()), abs(audio_input.min()))
-        
-        print("Processing audio features...")
-        timer.log("特徴抽出開始")
-        with tqdm(total=100, desc="特徴抽出") as pbar:
-            input_features = processor(audio_input, sampling_rate=16000, return_tensors="pt").input_features.to(device)
-            pbar.update(100)
-        timer.log("特徴抽出完了")
-        
-        print(f"Input features shape: {input_features.shape}")
-        
-        print("Generating transcription...")
-        timer.log("文字起こし開始")
-        with tqdm(total=100, desc="文字起こし") as pbar:
-            generated_ids = model.generate(input_features)
-            transcription = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
-            pbar.update(100)
-        timer.log("文字起こし完了")
-        
-        # 結果の保存
-        with open(output_file, "w", encoding="utf-8") as f:
-            f.write(transcription)
-        
-        timer.log("処理完了")
-        print(f"\nTranscription saved to {output_file}")
-        
-        if torch.cuda.is_available():
-            print(f"Final CUDA Memory: {torch.cuda.memory_allocated()/1024**2:.2f}MB")
-        
-        # 処理時間の詳細を表示
-        timer.print_durations()
-        
-        return output_file
-    
-    except Exception as e:
-        raise Exception(f"文字起こしエラー: {str(e)}")
-    
-    finally:
-        # 一時ファイルの削除
-        if temp_wav and os.path.exists(temp_wav):
-            try:
-                os.remove(temp_wav)
-                print("Temporary WAV file removed")
-            except Exception as e:
-                print(f"Warning: Could not remove temporary file: {str(e)}")
-        
-        # GPUメモリの解放
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+    # コンフィグ設定
+    model_id = "kotoba-tech/kotoba-whisper-v2.0"
+    device = "cuda:0" if use_gpu else "cpu"
+    torch_dtype = torch.float16 if use_gpu else torch.float32
+    model_kwargs = {"attn_implementation": "flash_attention_2"} if use_gpu else {}
+    generate_kwargs = {"language": "japanese", "return_timestamps": True}
 
-def main():
-    parser = argparse.ArgumentParser(description='音声ファイルの文字起こしを行います')
-    parser.add_argument('input_file', help='入力音声ファイルのパス（.webmまたは.wav形式）')
+    print(f"\nUsing device: {device}")
+    print(f"Using dtype: {torch_dtype}")
+    if use_gpu:
+        print("Using Flash Attention 2 for faster processing")
+    print("\nLoading model...")
+
+    # モデル読み込み
+    pipe = pipeline(
+        "automatic-speech-recognition",
+        model=model_id,
+        torch_dtype=torch_dtype,
+        device=device,
+        model_kwargs=model_kwargs
+    )
+
+    print("Model loaded successfully!")
+    print("Loading audio file...")
+
+    # 音声ファイルの読み込み (torchaudioを使用)
+    waveform, sample_rate = torchaudio.load(input_file)
+    print(f"Original sample rate: {sample_rate}Hz")
+    print(f"Audio duration: {waveform.shape[-1]/sample_rate:.2f} seconds")
+
+    # サンプリングレートの変換
+    if sample_rate != 16000:
+        print("Converting sample rate to 16kHz...")
+        resample_waveform = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=16000)(waveform)
+    else:
+        resample_waveform = waveform
+
+    # PyTorch テンソルを NumPy 配列に変換
+    resample_waveform_np = resample_waveform.numpy()
+
+    # GPU使用状況の表示（GPU使用時のみ）
+    if use_gpu:
+        print("\nInitial GPU Memory Usage:")
+        print(f"Allocated: {torch.cuda.memory_allocated(0)/1024**3:.2f} GB")
+        print(f"Reserved: {torch.cuda.memory_reserved(0)/1024**3:.2f} GB")
+
+    # 変換実行
+    print("\nStarting transcription...")
+    start_time = time.time()
+    result = pipe({"array": resample_waveform_np[0], "sampling_rate": 16000}, generate_kwargs=generate_kwargs)
+    end_time = time.time()
+
+    # GPU使用状況の表示（GPU使用時のみ）
+    if use_gpu:
+        print("\nFinal GPU Memory Usage:")
+        print(f"Allocated: {torch.cuda.memory_allocated(0)/1024**3:.2f} GB")
+        print(f"Reserved: {torch.cuda.memory_reserved(0)/1024**3:.2f} GB")
+        # GPUキャッシュのクリア
+        torch.cuda.empty_cache()
+
+    # 結果を保存
+    output_file = "transcription.txt"
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(result["text"])
+
+    processing_time = end_time - start_time
+    print(f"\nTranscription saved to {output_file}")
+    print(f"Processing time: {processing_time:.2f} seconds ({processing_time/60:.2f} minutes)")
+    return result["text"]
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("input_file", help="音声ファイルのパス")
     args = parser.parse_args()
 
     try:
@@ -215,5 +107,3 @@ def main():
         import traceback
         traceback.print_exc()
 
-if __name__ == "__main__":
-    main()
