@@ -12,9 +12,9 @@ https://qiita.com/ryosuke_ohori/items/9634c1fd8a9cc9ff7c36
 ## 特徴
 - 日本語に特化した高精度な文字起こし
 - webm、wav、mp3形式の音声ファイルに対応
-- GPUがある場合は自動的に使用（なくてもCPU動作可能）
+- GPUがある場合は自動的にFlash Attention 2を使用（なくてもCPU動作可能）
+- GPUメモリ使用状況のリアルタイム表示
 - ローカル環境で処理可能
-- 進捗バーによる処理状況の可視化
 - 詳細な処理時間の表示
 - コマンドライン引数による柔軟なファイル指定
 
@@ -31,6 +31,7 @@ https://qiita.com/ryosuke_ohori/items/9634c1fd8a9cc9ff7c36
 - メモリ: 8GB以上（16GB以上推奨）
 - ストレージ: 10GB以上の空き容量（モデルのダウンロード用）
 - GPU: NVIDIA GPU（オプション、CUDA対応必須）
+  - GPU使用時はFlash Attention 2による高速化が有効
 
 ### ソフトウェア要件
 - Python 3.10以上
@@ -41,10 +42,8 @@ https://qiita.com/ryosuke_ohori/items/9634c1fd8a9cc9ff7c36
 ### 主要な依存パッケージ
 - transformers
 - torch（CUDA対応版）
-- soundfile
-- pydub
+- torchaudio
 - numpy
-- tqdm（進捗バー表示用）
 
 ### ネットワーク要件
 - インターネット接続（初回実行時にモデルをダウンロード）
@@ -101,30 +100,30 @@ python kotoba.py input.wav
 python kotoba.py input.mp3
 ```
 
-### 出力
+### 出力情報
 - テキストファイル：入力ファイルと同じディレクトリに `transcription.txt` として出力
-- 進捗表示：
+- GPU情報の表示（GPU使用時）：
   ```
-  WAVファイル出力: 100%|██████████| 100/100 [00:01<00:00, 83.33it/s]
-  モデル読み込み: 100%|██████████| 2/2 [00:05<00:00, 2.50s/it]
-  特徴抽出: 100%|██████████| 100/100 [00:02<00:00, 45.45it/s]
-  文字起こし: 100%|██████████| 100/100 [00:03<00:00, 33.33it/s]
+  GPU: NVIDIA GeForce RTX XXXX
+  Total GPU Memory: XX.XX GB
+  CUDA Version: XX.X
+  
+  Initial GPU Memory Usage:
+  Allocated: X.XX GB
+  Reserved: X.XX GB
+  
+  Final GPU Memory Usage:
+  Allocated: X.XX GB
+  Reserved: X.XX GB
   ```
-- 処理時間の詳細表示：
+- 音声情報の表示：
   ```
-  処理時間の詳細:
-  ステップ                所要時間   
-  ----------------------------------------
-  音声ファイル読み込み        1.20秒
-  モノラル変換              0.50秒
-  サンプリングレート変換      0.80秒
-  WAVファイル出力           1.50秒
-  モデル読み込み            5.30秒
-  音声データ読み込み         0.30秒
-  特徴抽出                2.20秒
-  文字起こし               3.00秒
-  ----------------------------------------
-  合計時間                14.80秒
+  Original sample rate: XXXXXHz
+  Audio duration: XX.XX seconds
+  ```
+- 処理時間の表示：
+  ```
+  Processing time: XX.XX seconds (X.XX minutes)
   ```
 
 ## 注意事項
@@ -138,7 +137,7 @@ python kotoba.py input.mp3
 
 ### 使用モデル：kotoba-whisper-v2.0
 - OpenAI Whisperをベースに日本語特化
-- 通常のWhisperと比べて約6.3倍の高速化
+- Flash Attention 2による高速化（GPU使用時）
 - 日本語音声認識に最適化
 - 開発：Kotoba Technologies社
 
@@ -165,6 +164,7 @@ v2.2で追加される機能：
 ## 参考リンク
 - [WindowsにFFmpegをインストールする方法](https://qiita.com/Tadataka_Takahashi/items/9dcb0cf308db6f5dc31b)
 - [日本語特化の文字起こしAI『kotoba-whisper-v2.0』](https://qiita.com/ryosuke_ohori/items/9634c1fd8a9cc9ff7c36)
+- [Kotoba Whisper Google Colab実装例](https://colab.research.google.com/drive/1BLNS7AG0NFaDKMbk2eag8aRZggMwjmBu?usp=sharing) - クラウド環境での実行例
 
 ## ライセンス
 このプロジェクトはMITライセンスの下で公開されています。
